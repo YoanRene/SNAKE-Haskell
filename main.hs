@@ -7,7 +7,8 @@ data GameState = GameState {
                    snake :: [(Int, Int)],
                    direction :: (Int, Int),
                    food :: (Int, Int),
-                   gameOver :: Bool
+                   gameOver :: Bool,
+                   score :: Int
                  }
 
 -- Define the initial game state
@@ -16,7 +17,8 @@ initialState = GameState {
                  snake = [(0, 0)],
                  direction = (1, 0),
                  food = (5, 5),
-                 gameOver = False
+                 gameOver = False,
+                 score=0
                }
 
 -- Define the window size and title
@@ -41,11 +43,11 @@ cellSize = 20.0
 
 -- Define the update function
 update :: Float -> GameState -> GameState
-update _ gameState@(GameState { snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False }) =
+update _ gameState@(GameState { snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score}) =
     if x' < -10 || x' > 10 || y' < -10 || y' > 10 || (x', y') `elem` xs
         then gameState { gameOver = True }
     else if (x', y') == food
-        then gameState { snake = (x', y'):  (x,y):xs, food = randomFood (x', y') }
+        then gameState { snake = (x', y'):  (x,y):xs, food = randomFood (x', y') ,score=score+1}
     else 
         gameState { snake = (x', y') : init ((x,y):xs) }
     where
@@ -59,7 +61,6 @@ update _ gameState@(GameState { snake = (x, y):xs, direction = (dx, dy), food = 
             where
             x' = fst $ randomR (-10, 10) (mkStdGen (round (fromIntegral x * fromIntegral y * 1000)))
             y' = fst $ randomR (-10, 10) (mkStdGen (round (fromIntegral x * fromIntegral y * 1000)))
---update _ gameState@(GameState { snake = [], gameOver = False }) = gameState
 update _ gameState = gameState
 
 -- Define the input handling function
@@ -76,14 +77,15 @@ handleInput _ gameState = gameState
 
 -- Define the rendering function
 render :: GameState -> Picture
-render gameState@(GameState { snake = snake, food = food, gameOver = False }) =
-  pictures $ renderSnake snake : renderFood food : []
+render gameState@(GameState { snake = snake, food = food, gameOver = False ,score=score}) =
+  pictures [renderSnake snake , renderFood food , renderScore score]
   where
-    renderSnake = color snakeColor . pictures . map renderCell
-    renderFood = color foodColor . renderCell
-    renderCell (x, y) = translate (fromIntegral x * cellSize) (fromIntegral y * cellSize) $ rectangleSolid cellSize cellSize
+    renderSnake snake = color snakeColor (pictures (map renderCell snake))
+    renderFood food = color foodColor (renderCell food)
+    renderScore score = translate (-300) 200 (scale 0.2 0.2 (color red (text ("Score: "++(show score)))))
+    renderCell (x, y) = translate (fromIntegral x * cellSize) (fromIntegral y * cellSize) (rectangleSolid cellSize cellSize)
 render gameState@(GameState { gameOver = True }) =
-  translate (-200) 0 $ scale 0.5 0.5 $ color red $ text "Game Over"
+  translate (-200) 0 (scale 0.5 0.5 (color red (text "Game Over")))
   
 -- Define the main function
 main :: IO ()
