@@ -6,22 +6,31 @@ import System.IO.Unsafe
 
 -- Define the game state
 data GameState = GameState {
-                   snake :: [(Int, Int)],
-                   direction :: (Int, Int),
-                   food :: [(Int, Int)],
-                   gameOver :: Bool,
-                   score :: Int
-                 }
+  snake :: [(Int, Int)],
+  direction :: (Int, Int),
+  food :: [(Int, Int)],
+  vacio :: [(Int,Int)],
+  gameOver :: Bool,
+  score :: Int
+}
 
 -- Define the initial game state
 initialState :: GameState
 initialState = GameState {
-                 snake = [(0, 0)],
-                 direction = (1, 0),
-                 food = randomFood (5,0) cantHuevos [(0,0)],
-                 gameOver = False,
-                 score=0
-               }
+  snake = [(0, 0)] ,
+  direction = (1, 0),
+  food = initFood cantHuevos [(0,0)],
+  vacio= [],--removeElements (removeElements [(a,b)| a <- [-10..10],b <- [-10..10]] [(0,0)]) (initFood cantHuevos [(0,0)]),
+  gameOver = False,
+  score=0
+}
+
+
+initFood :: Int -> [(Int,Int)] -> [(Int,Int)]
+initFood cantHuevos snake = (randomFood (0,0) cantHuevos snake)
+
+removeElements :: Eq a => [a] -> [a] -> [a]
+removeElements xs ys = filter (\x -> not (elem x ys)) xs
 
 -- Define the window size and title
 window :: Display
@@ -29,6 +38,9 @@ window = InWindow "Yoan-Kevin Snake" (640, 480) (10, 10)
 
 cantHuevos :: Int
 cantHuevos = 5
+
+verdeOscuro :: Color
+verdeOscuro = makeColor 0.1 0.5 0.1 1.0
 
 -- Define the background color
 backgroundColor :: Color
@@ -96,11 +108,13 @@ handleInput _ gameState = gameState
 
 -- Define the rendering function
 render :: GameState -> Picture
-render GameState { snake = snake, food = food, gameOver = False ,score=score} =
-  pictures [renderSnake snake , renderFood food , renderScore score ]
+render GameState { snake = (x,y):xs, food = food, gameOver = False ,score=score, vacio=vacio} =
+  pictures [renderSnake xs , renderFood food , renderScore score ,renderVacias vacio, renderHead (x,y) ]
   where
-    renderSnake snake = color snakeColor (pictures (map renderCell snake))
+    renderHead (x,y) = color verdeOscuro (renderCell (x,y))
+    renderSnake xs = color snakeColor (pictures (map renderCell xs))
     renderFood food = color foodColor (pictures (map renderCell food))
+    renderVacias vacio = color white (pictures (map renderCell vacio))
     renderScore score = translate (-300) 200 (scale 0.2 0.2 (color red (text ("Score: "++(show score)))))
     renderCell (x, y) = translate (fromIntegral x * cellSize) (fromIntegral y * cellSize) (rectangleSolid cellSize cellSize)
 render GameState { gameOver = True } =
