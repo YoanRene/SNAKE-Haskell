@@ -3,7 +3,6 @@ import Graphics.Gloss.Interface.Pure.Game
 import System.Random
 import Data.List
 import qualified Data.Map as Map
-import Debug.Trace
 import System.IO.Unsafe
 import Graphics.Gloss.Data.Color
 import Graphics.Gloss.Data.Picture
@@ -20,9 +19,6 @@ data GameState = GameState {
 }
 
 data Cell = Empty | Blocked deriving (Eq, Show)
-
-inBounds :: [[Cell]] -> (Int, Int) -> Bool
-inBounds matrix (x, y) = x >= 0 && x < length matrix && y >= 0 && y < length (head matrix)
 
 isObstacle :: [[Cell]] -> (Int, Int) -> Bool
 isObstacle matrix (x, y) = ((matrix !! x) !! y) == Blocked
@@ -168,7 +164,7 @@ render GameState {obstaculos=obstaculos, snake = (x,y):xs, food = food, gameOver
   pictures [renderCeldas,renderObstaculos obstaculos,renderSnake xs , renderFood (fst (unzip food)), renderFoodVerde (fst (unzip food)), renderNumeros food,renderHead (x,y) ,renderScore score]
   where
     renderHead (x,y) = color verdeOscuro (renderCell (x,y))
-    mapa= [(a,b)| a <- [0..19],b <- [0..20]]
+    mapa= [(a,b)| a <- [0..20],b <- [0..20]]
     renderSnake xs = color green (pictures (map renderCell xs))
     renderNumeros food = color white (pictures (map renderCellNumeroFood food))
     renderFood food = color red (pictures (map renderCell food))
