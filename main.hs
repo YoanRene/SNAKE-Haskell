@@ -15,16 +15,20 @@ data GameState = GameState {
   direction :: (Int, Int),
   food :: [((Int, Int),Int)],
   gameOver :: Bool,
+  playMode :: Bool,
   score :: Int
 }
 
+
+type Queue a = [a]
 data Cell = Empty | Blocked deriving (Eq, Show)
 
 isObstacle :: [[Cell]] -> (Int, Int) -> Bool
 isObstacle matrix (x, y) = ((matrix !! x) !! y) == Blocked
 
+isValidMapa obstaculos start grid = ((length obstaculos) + (length (bfs grid start))) == 20 
+
 --Ok
-type Queue a = [a]
 
 bfs :: [[Cell]] -> (Int, Int) -> [((Int, Int), Int)]
 bfs matrix start = bfs' [(start, 0)] []
@@ -51,28 +55,20 @@ updateMatrix val points matrix = foldl (\acc (i,j) -> update2D i j val acc) matr
     updateRow j val row = take j row ++ [val] ++ drop (j+1) row
 --Ok 
 -- Define the initial game state
-initialState :: GameState
-initialState = GameState {
-  obstaculos = randomItems  (0,0) cantObstaculos [], 
-  grid = updateMatrix Blocked (obstaculos initialState) (replicate 20 (replicate 20 Empty)),
-  snake = randomItems (0,0) 1 (obstaculos initialState) ,
-  food = zip (randomItems (0,0) cantHuevos ((snake initialState)++(obstaculos initialState))) (cycle [1..cantHuevos]),
-  direction = (1, 0),
+initialState :: [(Int,Int)] -> GameState
+initialState obstaculos = GameState {
   gameOver = False,
+  obstaculos = obstaculos,
+  grid = updateMatrix Blocked obstaculos (replicate 20 (replicate 20 Empty)),
+  snake = randomItems (0,0) 1 obstaculos  ,
+  food = zip (randomItems (0,0) cantHuevos ((snake (initialState obstaculos))++obstaculos)) (cycle [1..cantHuevos]),
+  direction = (1, 0),
+  playMode=True,
   score=0
 }
 
--- Define la función roundedRectangle para dibujar un rectángulo con bordes suaves
-roundedRectangle :: Float -> Float -> Float -> Picture
-roundedRectangle width height radius = pictures [ 
-  polygon [(radius, 0),
-    (width - radius, 0),
-    (width, radius),
-    (width, height - radius),
-    (width - radius, height),
-    (radius, height),
-    (0, height - radius),
-    (0, radius)]]
+obstaculosRandom :: Int -> [(Int,Int)]
+obstaculosRandom n = randomItems (0,0) 7 [] 
 
 removeElements :: Eq a => [a] -> [a] -> [a]
 removeElements xs ys = filter (\x -> not (elem x ys)) xs
@@ -148,6 +144,15 @@ isOpposite :: (Int, Int) -> (Int, Int) -> Bool
 isOpposite (x1, y1) (x2, y2) = x1 == -x2 && y1 == -y2
 
 handleInput :: Event -> GameState -> GameState
+handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState{obstaculos=obstaculos, playMode=False})=
+  gameState{obstaculos=final}
+  where
+    x'=(round (x/20)) + 10
+    y'=(round (y/20)) + 10
+    final = if (x',y') `elem` obstaculos then (delete (x',y') obstaculos) else ((x',y'):obstaculos)
+handleInput (EventKey (Char 'p') _ _ _) gameState@(GameState { playMode=False, obstaculos=obstaculos}) = initialState obstaculos 
+handleInput (EventKey (Char 'n') _ _ _) gameState@(GameState { gameOver=True}) = gameState { playMode=False }
+handleInput (EventKey (Char 'r') _ _ _) gameState@(GameState { gameOver=True, obstaculos=obstaculos}) = initialState obstaculos
 handleInput (EventKey (Char 'w') _ _ _) gameState@(GameState { direction = dir })
   | not (isOpposite dir (0, 1)) = gameState { direction = (0, 1) }
 handleInput (EventKey (Char 'a') _ _ _) gameState@(GameState { direction = dir })
@@ -159,27 +164,52 @@ handleInput (EventKey (Char 'd') _ _ _) gameState@(GameState { direction = dir }
 handleInput _ gameState = gameState
 
 -- Define the rendering function
+renderObstaculos obstaculos= color blue (pictures (map renderCell obstaculos))
+renderObstaculosB obstaculos= color darkBlue (pictures (map renderCellB obstaculos))
+renderCeldas = color black (pictures (map renderCell mapa))
+renderCeldasB = color gray (pictures (map renderCellB mapa))
+renderCell (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (rectangleSolid cellSize cellSize)
+renderCellB (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (rectangleWire cellSize cellSize)
+mapa= [(a,b)| a <- [0..19],b <- [0..19]]
+
+-- Define la función roundedRectangle para dibujar un rectángulo con bordes suaves
+-- | Color azul oscuro
+darkBlue :: Color
+darkBlue = makeColor 0.1 0.1 0.5 1.0
+
+
+-- | Crea un color gris con una intensidad dada
+gray :: Color
+gray = makeColor 0.1 0.1 0.1 1.0
+
+
+
+-- | Crea un color rojo oscuro con una intensidad dada
+darkRed :: Color
+darkRed = makeColor 0.5 0.1 0.1 1.0
+
 render :: GameState -> Picture
 render GameState {obstaculos=obstaculos, snake = (x,y):xs, food = food, gameOver = False ,score=score} =
-  pictures [renderCeldas,renderObstaculos obstaculos,renderSnake xs , renderFood (fst (unzip food)), renderFoodVerde (fst (unzip food)), renderNumeros food,renderHead (x,y) ,renderScore score]
+  pictures [renderCeldas,renderCeldasB,renderObstaculos obstaculos,renderObstaculosB obstaculos,renderSnake xs ,renderSnakeB xs, renderFood (fst (unzip food)),renderFoodB (fst (unzip food)), renderFoodVerde (fst (unzip food)), renderHead (x,y) ,renderNumeros food,renderScore score]
   where
     renderHead (x,y) = color verdeOscuro (renderCell (x,y))
-    mapa= [(a,b)| a <- [0..20],b <- [0..20]]
     renderSnake xs = color green (pictures (map renderCell xs))
+    renderSnakeB xs = color verdeOscuro (pictures (map renderCellB xs))
     renderNumeros food = color white (pictures (map renderCellNumeroFood food))
     renderFood food = color red (pictures (map renderCell food))
+    renderFoodB food = color darkRed (pictures (map renderCellB food))
     renderFoodVerde food = color verdeOscuro (pictures (map renderCellV food))
-    renderObstaculos obstaculos= color blue (pictures (map renderCell obstaculos))
-    renderCeldas = color black (pictures (map renderCellS mapa))
     renderScore score = translate (-310) 215 (scale 0.15 0.15 (color red (text ("Score: "++(show score)))))
     renderCellNumeroFood ((x,y),z) = (translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (scale 0.18 0.18 (text (show z))))
-    renderCellS (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10)* cellSize) (rectangleSolid cellSize cellSize)
-    renderCellV (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (roundedRectangle (cellSize/3) (cellSize/3) 2)
-    renderCell (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (roundedRectangle cellSize cellSize 4)
-render GameState { gameOver = True ,score=score} = pictures
+    renderCellV (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (rectangleSolid (cellSize/3) (cellSize/3))
+render GameState { gameOver = True ,playMode=True, score=score} = pictures
   [translate (-200) 0 (scale 0.5 0.5 (color red (text ("Game Over")))),
   translate (-135) (-90) (scale 0.4 0.4 (color red (text ("Score: "++(show score)))))]
+render GameState { gameOver = True, playMode=False ,obstaculos=obstaculos } = 
+  pictures [renderCeldas,renderCeldasB,renderObstaculos obstaculos,renderObstaculosB obstaculos]
   
 -- Define the main function
 main :: IO ()
-main = play window white 6 initialState render handleInput update
+main = do
+  play window white 6 (initialState (obstaculosRandom 7))render handleInput update
+  
