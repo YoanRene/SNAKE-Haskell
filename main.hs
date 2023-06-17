@@ -3,6 +3,7 @@ import Graphics.Gloss.Interface.Pure.Game
 import System.Random
 import Data.List
 import qualified Data.Map as Map
+import Data.Aeson
 import System.IO.Unsafe
 import Graphics.Gloss.Data.Color
 import Graphics.Gloss.Data.Picture
@@ -16,6 +17,9 @@ data GameState = GameState {
   food :: [((Int, Int),Int)],
   gameOver :: Bool,
   playMode :: Bool,
+  saveMode :: Bool, 
+  loadMode :: Bool, 
+  pathSL :: String,
   score :: Int
 }
 
@@ -26,7 +30,7 @@ data Cell = Empty | Blocked deriving (Eq, Show)
 isObstacle :: [[Cell]] -> (Int, Int) -> Bool
 isObstacle matrix (x, y) = ((matrix !! x) !! y) == Blocked
 
-isValidMapa obstaculos start grid = ((length obstaculos) + (length (bfs grid start))) == 20 
+isValidMapa obstaculos grid = ((length obstaculos) + (length (bfs grid (head (randomItems (0,0) 1 obstaculos))))) == 20 
 
 --Ok
 
@@ -64,6 +68,9 @@ initialState obstaculos = GameState {
   food = zip (randomItems (0,0) cantHuevos ((snake (initialState obstaculos))++obstaculos)) (cycle [1..cantHuevos]),
   direction = (1, 0),
   playMode=True,
+  saveMode=False,
+  loadMode=False,
+  pathSL="<name_file.json>",
   score=0
 }
 
@@ -128,7 +135,7 @@ huevosQueCumpleUno mini food matrix = filter (\((x,y),z) -> (matrix Map.! (x,y))
 -- Define the update function
 update :: Float -> GameState -> GameState
 update _ gameState@(GameState { obstaculos = obstaculos ,snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score, grid=grid}) =
-    if (x', y') `elem` xs || (x', y') `elem` obstaculos
+    if (x', y') `elem` xs || (x', y') `elem` obstaculos || (100-(length obstaculos)-(length ((x, y):xs))<cantHuevos)
         then gameState { gameOver = True }
     else if (x', y') `elem` fst (unzip food)
         then gameState { snake = (x', y'):  (x,y):xs, food = updateFood food (x', y') cantHuevos (((x',y'):(x,y):xs)++obstaculos) ,score=if length food /= 1 then updateScore score (myDic (bfs grid (x',y'))) (filter (\((a,b),z) -> a/=x'||b/=y') food) else score}
@@ -144,22 +151,25 @@ isOpposite :: (Int, Int) -> (Int, Int) -> Bool
 isOpposite (x1, y1) (x2, y2) = x1 == -x2 && y1 == -y2
 
 handleInput :: Event -> GameState -> GameState
-handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState{obstaculos=obstaculos, playMode=False})=
+handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState{obstaculos=obstaculos, playMode=False,saveMode=False,loadMode=False})=
   gameState{obstaculos=final}
   where
     x'=(round (x/20)) + 10
     y'=(round (y/20)) + 10
-    final = if (x',y') `elem` obstaculos then (delete (x',y') obstaculos) else ((x',y'):obstaculos)
-handleInput (EventKey (Char 'p') _ _ _) gameState@(GameState { playMode=False, obstaculos=obstaculos}) = initialState obstaculos 
-handleInput (EventKey (Char 'n') _ _ _) gameState@(GameState { gameOver=True}) = gameState { playMode=False }
-handleInput (EventKey (Char 'r') _ _ _) gameState@(GameState { gameOver=True, obstaculos=obstaculos}) = initialState obstaculos
-handleInput (EventKey (Char 'w') _ _ _) gameState@(GameState { direction = dir })
+    final = if x'<0 || y'<0 || x'> 19 || y'>19 then obstaculos else if (x',y') `elem` obstaculos then (delete (x',y') obstaculos) else ((x',y'):obstaculos)
+
+handleInput (EventKey (Char 's') Down _ _) gameState@(GameState { playMode=False , saveMode=False, loadMode=False}) = gameState { saveMode=True}
+handleInput (EventKey (Char '\b') Down _ _) gameState@(GameState {playMode=False ,saveMode=True, pathSL=pathSL})= gameState{ pathSL = if pathSL=="" then "" else init pathSL } 
+handleInput (EventKey (Char k) Down _ _) gameState@(GameState {playMode=False ,saveMode=True, pathSL=pathSL})=gameState{ pathSL= if pathSL=="<name_file.json>" then [k] else pathSL++[k]}
+handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState { gameOver=True, playMode=True,obstaculos=obstaculos}) = 
+  if isInsideButton buttonPlay (x,y)   then initialState obstaculos else if isInsideButton buttonEditor (x,y) then gameState{playMode =False} else gameState
+handleInput (EventKey (Char 'w') Down _ _) gameState@(GameState { direction = dir })
   | not (isOpposite dir (0, 1)) = gameState { direction = (0, 1) }
-handleInput (EventKey (Char 'a') _ _ _) gameState@(GameState { direction = dir })
+handleInput (EventKey (Char 'a') Down _ _) gameState@(GameState { direction = dir })
   | not (isOpposite dir (-1, 0)) = gameState { direction = (-1, 0) }
-handleInput (EventKey (Char 's') _ _ _) gameState@(GameState { direction = dir })
+handleInput (EventKey (Char 's') Down _ _) gameState@(GameState { direction = dir })
   | not (isOpposite dir (0, -1)) = gameState { direction = (0, -1) }
-handleInput (EventKey (Char 'd') _ _ _) gameState@(GameState { direction = dir })
+handleInput (EventKey (Char 'd') Down _ _) gameState@(GameState { direction = dir })
   | not (isOpposite dir (1, 0)) = gameState { direction = (1, 0) }
 handleInput _ gameState = gameState
 
@@ -188,6 +198,59 @@ gray = makeColor 0.1 0.1 0.1 1.0
 darkRed :: Color
 darkRed = makeColor 0.5 0.1 0.1 1.0
 
+data Button = Button { 
+  buttonPos :: (Float, Float),
+  buttonSize :: (Float, Float),
+  buttonLabel :: String
+}
+
+isInsideButton :: Button -> (Float,Float)-> Bool
+isInsideButton button (x, y) =
+    let (bx, by) = buttonPos button
+        (bw, bh) = buttonSize button
+    in x >= bx - bw / 2 && x <= bx + bw / 2 && y >= by - bh / 2 && y <= by + bh / 2
+
+sizeButton :: (Float,Float)
+sizeButton = (150,60)
+
+sizeButtonm :: (Float,Float)
+sizeButtonm = (75,30)
+
+buttonBasic :: Float -> Float -> String -> Button
+buttonBasic x y s= Button{
+  buttonPos=(x,y),
+  buttonSize=sizeButton,
+  buttonLabel=s
+}
+
+buttonBasicm :: Float -> Float -> String -> Button
+buttonBasicm x y s= Button{
+  buttonPos=(x,y),
+  buttonSize=sizeButtonm,
+  buttonLabel=s
+}
+
+drawButton :: Button -> Picture
+drawButton button@(Button{ buttonLabel=buttonLabel, buttonPos=(x,y),buttonSize=(w,h)}) = pictures
+  [ translate x y $ color white $ rectangleSolid w h
+  , translate x y $ color darkRed$ rectangleWire w h
+  , translate (x - w / 2+5) (y - h / 2+10) $ color darkRed $ scale 0.3 0.3 $ text buttonLabel
+  ]
+  where
+    (x, y) = buttonPos button
+    (w, h) = buttonSize button
+
+buttonPlay :: Button
+buttonPlay = buttonBasic (-230) (-180) "PLAY"
+
+buttonPlaym :: Button
+buttonPlaym = buttonBasicm (-230) (-180) "PLAY"
+
+buttonEditor :: Button
+buttonEditor = buttonBasic (230) (-180) "EDITOR"
+
+
+
 render :: GameState -> Picture
 render GameState {obstaculos=obstaculos, snake = (x,y):xs, food = food, gameOver = False ,score=score} =
   pictures [renderCeldas,renderCeldasB,renderObstaculos obstaculos,renderObstaculosB obstaculos,renderSnake xs ,renderSnakeB xs, renderFood (fst (unzip food)),renderFoodB (fst (unzip food)), renderFoodVerde (fst (unzip food)), renderHead (x,y) ,renderNumeros food,renderScore score]
@@ -195,17 +258,20 @@ render GameState {obstaculos=obstaculos, snake = (x,y):xs, food = food, gameOver
     renderHead (x,y) = color verdeOscuro (renderCell (x,y))
     renderSnake xs = color green (pictures (map renderCell xs))
     renderSnakeB xs = color verdeOscuro (pictures (map renderCellB xs))
-    renderNumeros food = color white (pictures (map renderCellNumeroFood food))
+    renderNumeros food = color green (pictures (map renderCellNumeroFood food))
     renderFood food = color red (pictures (map renderCell food))
     renderFoodB food = color darkRed (pictures (map renderCellB food))
     renderFoodVerde food = color verdeOscuro (pictures (map renderCellV food))
-    renderScore score = translate (-310) 215 (scale 0.15 0.15 (color red (text ("Score: "++(show score)))))
+    renderScore score = translate (-310) 215 (scale 0.15 0.15 (color darkRed (text ("Score: "++(show score)))))
     renderCellNumeroFood ((x,y),z) = (translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (scale 0.18 0.18 (text (show z))))
     renderCellV (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (rectangleSolid (cellSize/3) (cellSize/3))
 render GameState { gameOver = True ,playMode=True, score=score} = pictures
-  [translate (-200) 0 (scale 0.5 0.5 (color red (text ("Game Over")))),
-  translate (-135) (-90) (scale 0.4 0.4 (color red (text ("Score: "++(show score)))))]
-render GameState { gameOver = True, playMode=False ,obstaculos=obstaculos } = 
+  [translate (-180) 100 (scale 0.5 0.5 (color darkRed (text ("Game Over")))),
+  translate (-105) 10 (scale 0.4 0.4 (color darkRed (text ("Score: "++(show score))))),
+  drawButton buttonPlay,
+  drawButton buttonEditor]
+render GameState {playMode=False, saveMode=True, pathSL=pathSL} = translate (-200) 0 (scale 0.2 0.2 (color darkRed (text ("Path: "++pathSL))))
+render GameState { playMode=False , saveMode=False , loadMode=False ,obstaculos=obstaculos } = 
   pictures [renderCeldas,renderCeldasB,renderObstaculos obstaculos,renderObstaculosB obstaculos]
   
 -- Define the main function
