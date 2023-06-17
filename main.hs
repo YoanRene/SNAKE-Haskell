@@ -12,6 +12,7 @@ import Graphics.Gloss.Data.Picture
 data GameState = GameState {
   obstaculos :: [(Int,Int)],
   grid :: [[Cell]],
+  cantHuevos :: Int,
   snake :: [(Int, Int)],
   direction :: (Int, Int),
   food :: [((Int, Int),Int)],
@@ -63,9 +64,10 @@ initialState :: [(Int,Int)] -> GameState
 initialState obstaculos = GameState {
   gameOver = False,
   obstaculos = obstaculos,
+  cantHuevos = 5,
   grid = updateMatrix Blocked obstaculos (replicate 20 (replicate 20 Empty)),
   snake = randomItems (0,0) 1 obstaculos  ,
-  food = zip (randomItems (0,0) cantHuevos ((snake (initialState obstaculos))++obstaculos)) (cycle [1..cantHuevos]),
+  food = zip (randomItems (0,0) (cantHuevos (initialState obstaculos)) ((snake (initialState obstaculos))++obstaculos)) (cycle [1..(cantHuevos (initialState obstaculos))]),
   direction = (1, 0),
   playMode=True,
   saveMode=False,
@@ -83,9 +85,6 @@ removeElements xs ys = filter (\x -> not (elem x ys)) xs
 -- Define the window size and title
 window :: Display
 window = InWindow "Yoan-Kevin Snake" (640, 480) (10, 10)
-
-cantHuevos :: Int
-cantHuevos = 5
 
 cantObstaculos :: Int
 cantObstaculos = 7
@@ -112,7 +111,7 @@ randomItems (x, y) n invalids =
     y'= unsafePerformIO y1
 
 updateFood :: [((Int,Int),Int)] -> (Int,Int) -> Int -> [(Int,Int)] -> [((Int,Int),Int)]
-updateFood food (x,y) n invalids=
+updateFood food (x,y) cantHuevos invalids=
   if( length food == 1) then (zip (randomItems (0,0) cantHuevos invalids) (cycle [1..cantHuevos]))
   else filter (\((a,b),z) -> a/=x||b/=y) food
 
@@ -134,7 +133,7 @@ huevosQueCumpleUno mini food matrix = filter (\((x,y),z) -> (matrix Map.! (x,y))
 
 -- Define the update function
 update :: Float -> GameState -> GameState
-update _ gameState@(GameState { obstaculos = obstaculos ,snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score, grid=grid}) =
+update _ gameState@(GameState { obstaculos = obstaculos ,snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score, grid=grid, cantHuevos=cantHuevos}) =
     if (x', y') `elem` xs || (x', y') `elem` obstaculos || (100-(length obstaculos)-(length ((x, y):xs))<cantHuevos)
         then gameState { gameOver = True }
     else if (x', y') `elem` fst (unzip food)
