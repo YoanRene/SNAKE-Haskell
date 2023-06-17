@@ -81,7 +81,7 @@ initialState cantHuevos largo ancho obstaculos = GameState {
 }
 
 obstaculosRandom :: Int -> Int -> Int -> [(Int,Int)]
-obstaculosRandom n largo ancho = randomItems (0,0) 7 [] largo ancho
+obstaculosRandom n largo ancho = randomItems (0,0) n [] largo ancho
 
 removeElements :: Eq a => [a] -> [a] -> [a]
 removeElements xs ys = filter (\x -> not (elem x ys)) xs
@@ -158,14 +158,14 @@ divCeiling :: (Integral a) => a -> a -> a
 divCeiling x y = ceiling ((fromIntegral x) / (fromIntegral y))
 
 handleInput :: Event -> GameState -> GameState
-handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState{obstaculos=obstaculos, playMode=False,saveMode=False,loadMode=False,largoGrid=largoGrid,anchoGrid=anchoGrid})=
-  gameState{obstaculos=final}
-  where
-    x'=(round (x/cellSize)) + (divCeiling largoGrid 2)
-    y'=(round (y/cellSize)) + (divCeiling anchoGrid 2)
-    final = if x'<0 || y'<0 || x'> (largoGrid-1) || y'>(anchoGrid-1) then obstaculos else if (x',y') `elem` obstaculos then (delete (x',y') obstaculos) else ((x',y'):obstaculos)
+handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState { playMode=False , saveMode=False, loadMode=False, cantHuevos=cantHuevos,obstaculos=obstaculos,largoGrid=largoGrid,anchoGrid=anchoGrid}) = 
+  if isInsideButton buttonPlaym  (x,y) then initialState cantHuevos largoGrid anchoGrid obstaculos else if isInsideButton buttonSavem (x,y) then gameState{saveMode=True} else if isInsideButton buttonLoadm (x,y) then gameState{loadMode=True} else 
+    gameState{obstaculos=final}
+    where
+      x'=(round (x/cellSize)) + (divCeiling largoGrid 2)
+      y'=(round (y/cellSize)) + (divCeiling anchoGrid 2)
+      final = if x'<0 || y'<0 || x'> (largoGrid-1) || y'>(anchoGrid-1) then obstaculos else if (x',y') `elem` obstaculos then (delete (x',y') obstaculos) else ((x',y'):obstaculos)
 
-handleInput (EventKey (Char 's') Down _ _) gameState@(GameState { playMode=False , saveMode=False, loadMode=False}) = gameState { saveMode=True}
 handleInput (EventKey (Char '\b') Down _ _) gameState@(GameState {playMode=False ,saveMode=True, pathSL=pathSL})= gameState{ pathSL = if pathSL=="" then "" else init pathSL } 
 handleInput (EventKey (Char k) Down _ _) gameState@(GameState {playMode=False ,saveMode=True, pathSL=pathSL})=gameState{ pathSL= if pathSL=="<name_file.json>" then [k] else pathSL++[k]}
 handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState { gameOver=True, playMode=True,obstaculos=obstaculos ,largoGrid=largoGrid,anchoGrid=anchoGrid,cantHuevos=cantHuevos}) = 
@@ -212,7 +212,7 @@ sizeButton :: (Float,Float)
 sizeButton = (150,60)
 
 sizeButtonm :: (Float,Float)
-sizeButtonm = (75,30)
+sizeButtonm = (105,60)
 
 buttonBasic :: Float -> Float -> String -> Button
 buttonBasic x y s= Button{
@@ -242,7 +242,13 @@ buttonPlay :: Button
 buttonPlay = buttonBasic (-230) (-180) "PLAY"
 
 buttonPlaym :: Button
-buttonPlaym = buttonBasicm (-230) (-180) "PLAY"
+buttonPlaym = buttonBasicm (255) (-190) "PLAY"
+
+buttonSavem :: Button
+buttonSavem = buttonBasicm (255) (-10) "SAVE"
+
+buttonLoadm :: Button
+buttonLoadm = buttonBasicm (255) (170) "LOAD"
 
 buttonEditor :: Button
 buttonEditor = buttonBasic (230) (-180) "EDITOR"
@@ -278,10 +284,13 @@ render GameState { gameOver = True ,playMode=True, score=score} = pictures
   drawButton buttonEditor]
 render GameState {playMode=False, saveMode=True, pathSL=pathSL} = translate (-200) 0 (scale 0.2 0.2 (color darkRed (text ("Path: "++pathSL))))
 render GameState { playMode=False ,largoGrid=largoGrid,anchoGrid=anchoGrid, saveMode=False , loadMode=False ,obstaculos=obstaculos } = 
-  pictures [renderCeldas largoGrid anchoGrid,renderCeldasB largoGrid anchoGrid,renderObstaculos obstaculos largoGrid anchoGrid,renderObstaculosB obstaculos largoGrid anchoGrid]
+  pictures [renderCeldas largoGrid anchoGrid,renderCeldasB largoGrid anchoGrid,renderObstaculos obstaculos largoGrid anchoGrid,renderObstaculosB obstaculos largoGrid anchoGrid,
+  drawButton buttonPlaym,drawButton buttonSavem,drawButton buttonLoadm]
   
 -- Define the main function
 main :: IO ()
 main = do
-  play window white 6 (initialState 5 13 14 (obstaculosRandom 7 13 14)) render handleInput update
+  let largo=15
+  let ancho=7
+  play window white 6 (initialState 5 largo ancho (obstaculosRandom 10 largo ancho)) render handleInput update
   
