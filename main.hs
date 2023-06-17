@@ -11,6 +11,8 @@ import Graphics.Gloss.Data.Picture
 -- Define the game state
 data GameState = GameState {
   obstaculos :: [(Int,Int)],
+  largoGrid :: Int,
+  anchoGrid :: Int,
   grid :: [[Cell]],
   cantHuevos :: Int,
   snake :: [(Int, Int)],
@@ -31,7 +33,7 @@ data Cell = Empty | Blocked deriving (Eq, Show)
 isObstacle :: [[Cell]] -> (Int, Int) -> Bool
 isObstacle matrix (x, y) = ((matrix !! x) !! y) == Blocked
 
-isValidMapa obstaculos grid = ((length obstaculos) + (length (bfs grid (head (randomItems (0,0) 1 obstaculos))))) == 20 
+isValidMapa obstaculos grid = ((length obstaculos) + (length (bfs grid (head (randomItems (0,0) 1 obstaculos (length grid) (length (head grid))))))) == ((length grid) * (length (head grid)))
 
 --Ok
 
@@ -43,13 +45,13 @@ bfs matrix start = bfs' [(start, 0)] []
     bfs' ((pos, dist):queue) visited
       | pos `elem` map (\(p, _) -> p) visited = bfs' queue visited
       | otherwise =
-        let neighbors = filter (\p -> not (isObstacle matrix p)) (getNeighbors pos)
+        let neighbors = filter (\p -> not (isObstacle matrix p)) (getNeighbors pos (length matrix) (length (head matrix)) )
             newQueue = queue ++ map (\p -> (p, dist + 1)) neighbors
             newVisited = visited ++ [(pos, dist)]
         in bfs' newQueue newVisited
 
-getNeighbors :: (Int, Int) -> [(Int, Int)]
-getNeighbors (x, y) = [((x-1+20)`mod`20, y), ((x+1+20)`mod`20, y), (x, (y-1+20)`mod`20), (x, (y+1+20)`mod`20)]
+getNeighbors :: (Int, Int) -> Int -> Int -> [(Int, Int)]
+getNeighbors (x, y) largo ancho = [((x-1+largo)`mod`largo, y), ((x+1+largo)`mod`largo, y), (x, (y-1+ancho)`mod`ancho), (x, (y+1+ancho)`mod`ancho)]
 
 -- Ok
 
@@ -60,14 +62,16 @@ updateMatrix val points matrix = foldl (\acc (i,j) -> update2D i j val acc) matr
     updateRow j val row = take j row ++ [val] ++ drop (j+1) row
 --Ok 
 -- Define the initial game state
-initialState :: [(Int,Int)] -> GameState
-initialState obstaculos = GameState {
+initialState :: Int -> Int -> Int -> [(Int,Int)] -> GameState
+initialState cantHuevos largo ancho obstaculos = GameState {
   gameOver = False,
   obstaculos = obstaculos,
-  cantHuevos = 5,
-  grid = updateMatrix Blocked obstaculos (replicate 20 (replicate 20 Empty)),
-  snake = randomItems (0,0) 1 obstaculos  ,
-  food = zip (randomItems (0,0) (cantHuevos (initialState obstaculos)) ((snake (initialState obstaculos))++obstaculos)) (cycle [1..(cantHuevos (initialState obstaculos))]),
+  cantHuevos = cantHuevos,
+  largoGrid =largo,
+  anchoGrid = ancho,
+  grid = updateMatrix Blocked obstaculos (replicate largo (replicate ancho Empty)),
+  snake = randomItems (0,0) 1 obstaculos largo ancho ,
+  food = zip (randomItems (0,0) cantHuevos ((snake (initialState cantHuevos largo ancho obstaculos))++obstaculos) largo ancho) (cycle [1..cantHuevos ]),
   direction = (1, 0),
   playMode=True,
   saveMode=False,
@@ -76,8 +80,8 @@ initialState obstaculos = GameState {
   score=0
 }
 
-obstaculosRandom :: Int -> [(Int,Int)]
-obstaculosRandom n = randomItems (0,0) 7 [] 
+obstaculosRandom :: Int -> Int -> Int -> [(Int,Int)]
+obstaculosRandom n largo ancho = randomItems (0,0) 7 [] largo ancho
 
 removeElements :: Eq a => [a] -> [a] -> [a]
 removeElements xs ys = filter (\x -> not (elem x ys)) xs
@@ -97,22 +101,22 @@ cellSize :: Float
 cellSize = 20.0
 
 
-randomItems :: (Int,Int) -> Int -> [(Int,Int)] -> [(Int,Int)]
-randomItems _ 0 _ = []
-randomItems (x, y) n invalids = 
+randomItems :: (Int,Int) -> Int -> [(Int,Int)] -> Int -> Int -> [(Int,Int)]
+randomItems _ 0 _ _ _ = []
+randomItems (x, y) n invalids largo ancho= 
   if (x', y') `elem` invalids 
-    then randomItems (x', y') n invalids 
+    then randomItems (x', y') n invalids largo ancho 
   else 
-    (x', y'):(randomItems (x,y) (n-1) ((x',y'):invalids))
+    (x', y'):(randomItems (x,y) (n-1) ((x',y'):invalids) largo ancho)
   where
-    x1=randomRIO (0, 19) :: IO Int
-    y1=randomRIO (0, 19) :: IO Int
+    x1=randomRIO (0, largo-1) :: IO Int
+    y1=randomRIO (0, ancho-1) :: IO Int
     x'= unsafePerformIO x1
     y'= unsafePerformIO y1
 
-updateFood :: [((Int,Int),Int)] -> (Int,Int) -> Int -> [(Int,Int)] -> [((Int,Int),Int)]
-updateFood food (x,y) cantHuevos invalids=
-  if( length food == 1) then (zip (randomItems (0,0) cantHuevos invalids) (cycle [1..cantHuevos]))
+updateFood :: [((Int,Int),Int)] -> (Int,Int) -> Int -> Int ->Int -> [(Int,Int)] -> [((Int,Int),Int)]
+updateFood food (x,y) cantHuevos largo ancho invalids=
+  if( length food == 1) then (zip (randomItems (0,0) cantHuevos invalids largo ancho) (cycle [1..cantHuevos]))
   else filter (\((a,b),z) -> a/=x||b/=y) food
 
 updateScore :: Int -> Map.Map (Int,Int) Int -> [((Int,Int),Int)] -> Int
@@ -120,6 +124,7 @@ updateScore score matrix food = score+100*(maximum $ snd $ unzip $ huevosQueCump
 
 myDic :: Ord k => [(k, v)] -> Map.Map k v
 myDic pares = Map.fromList pares
+
 
 findMin :: [((Int,Int),Int)] -> Map.Map (Int,Int) Int -> Int
 findMin [] _  = 25000
@@ -133,35 +138,38 @@ huevosQueCumpleUno mini food matrix = filter (\((x,y),z) -> (matrix Map.! (x,y))
 
 -- Define the update function
 update :: Float -> GameState -> GameState
-update _ gameState@(GameState { obstaculos = obstaculos ,snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score, grid=grid, cantHuevos=cantHuevos}) =
-    if (x', y') `elem` xs || (x', y') `elem` obstaculos || (100-(length obstaculos)-(length ((x, y):xs))<cantHuevos)
+update _ gameState@(GameState { obstaculos = obstaculos ,snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score, grid=grid, cantHuevos=cantHuevos, largoGrid=largoGrid,anchoGrid=anchoGrid}) =
+    if (x', y') `elem` xs || (x', y') `elem` obstaculos || ((largoGrid*anchoGrid)-(length obstaculos)-(length ((x, y):xs))<cantHuevos)
         then gameState { gameOver = True }
     else if (x', y') `elem` fst (unzip food)
-        then gameState { snake = (x', y'):  (x,y):xs, food = updateFood food (x', y') cantHuevos (((x',y'):(x,y):xs)++obstaculos) ,score=if length food /= 1 then updateScore score (myDic (bfs grid (x',y'))) (filter (\((a,b),z) -> a/=x'||b/=y') food) else score}
+        then gameState { snake = (x', y'):  (x,y):xs, food = updateFood food (x', y') cantHuevos largoGrid anchoGrid (((x',y'):(x,y):xs)++obstaculos) ,score=if length food /= 1 then updateScore score (myDic (bfs grid (x',y'))) (filter (\((a,b),z) -> a/=x'||b/=y') food) else score}
     else 
         gameState { snake = (x', y') : init ((x,y):xs) }
     where
-        x' = (x + 20 + dx) `mod` 20
-        y' = (y + 20 + dy) `mod` 20      
+        x' = (x + largoGrid + dx) `mod` largoGrid
+        y' = (y + anchoGrid + dy) `mod` anchoGrid      
 update _ gameState = gameState
 
 -- Define the input handling function
 isOpposite :: (Int, Int) -> (Int, Int) -> Bool
 isOpposite (x1, y1) (x2, y2) = x1 == -x2 && y1 == -y2
 
+divCeiling :: (Integral a) => a -> a -> a
+divCeiling x y = ceiling ((fromIntegral x) / (fromIntegral y))
+
 handleInput :: Event -> GameState -> GameState
-handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState{obstaculos=obstaculos, playMode=False,saveMode=False,loadMode=False})=
+handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState{obstaculos=obstaculos, playMode=False,saveMode=False,loadMode=False,largoGrid=largoGrid,anchoGrid=anchoGrid})=
   gameState{obstaculos=final}
   where
-    x'=(round (x/20)) + 10
-    y'=(round (y/20)) + 10
-    final = if x'<0 || y'<0 || x'> 19 || y'>19 then obstaculos else if (x',y') `elem` obstaculos then (delete (x',y') obstaculos) else ((x',y'):obstaculos)
+    x'=(round (x/cellSize)) + (divCeiling largoGrid 2)
+    y'=(round (y/cellSize)) + (divCeiling anchoGrid 2)
+    final = if x'<0 || y'<0 || x'> (largoGrid-1) || y'>(anchoGrid-1) then obstaculos else if (x',y') `elem` obstaculos then (delete (x',y') obstaculos) else ((x',y'):obstaculos)
 
 handleInput (EventKey (Char 's') Down _ _) gameState@(GameState { playMode=False , saveMode=False, loadMode=False}) = gameState { saveMode=True}
 handleInput (EventKey (Char '\b') Down _ _) gameState@(GameState {playMode=False ,saveMode=True, pathSL=pathSL})= gameState{ pathSL = if pathSL=="" then "" else init pathSL } 
 handleInput (EventKey (Char k) Down _ _) gameState@(GameState {playMode=False ,saveMode=True, pathSL=pathSL})=gameState{ pathSL= if pathSL=="<name_file.json>" then [k] else pathSL++[k]}
-handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState { gameOver=True, playMode=True,obstaculos=obstaculos}) = 
-  if isInsideButton buttonPlay (x,y)   then initialState obstaculos else if isInsideButton buttonEditor (x,y) then gameState{playMode =False} else gameState
+handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState { gameOver=True, playMode=True,obstaculos=obstaculos ,largoGrid=largoGrid,anchoGrid=anchoGrid,cantHuevos=cantHuevos}) = 
+  if isInsideButton buttonPlay (x,y)   then initialState cantHuevos largoGrid anchoGrid obstaculos else if isInsideButton buttonEditor (x,y) then gameState{playMode =False} else gameState
 handleInput (EventKey (Char 'w') Down _ _) gameState@(GameState { direction = dir })
   | not (isOpposite dir (0, 1)) = gameState { direction = (0, 1) }
 handleInput (EventKey (Char 'a') Down _ _) gameState@(GameState { direction = dir })
@@ -172,16 +180,7 @@ handleInput (EventKey (Char 'd') Down _ _) gameState@(GameState { direction = di
   | not (isOpposite dir (1, 0)) = gameState { direction = (1, 0) }
 handleInput _ gameState = gameState
 
--- Define the rendering function
-renderObstaculos obstaculos= color blue (pictures (map renderCell obstaculos))
-renderObstaculosB obstaculos= color darkBlue (pictures (map renderCellB obstaculos))
-renderCeldas = color black (pictures (map renderCell mapa))
-renderCeldasB = color gray (pictures (map renderCellB mapa))
-renderCell (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (rectangleSolid cellSize cellSize)
-renderCellB (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (rectangleWire cellSize cellSize)
-mapa= [(a,b)| a <- [0..19],b <- [0..19]]
 
--- Define la función roundedRectangle para dibujar un rectángulo con bordes suaves
 -- | Color azul oscuro
 darkBlue :: Color
 darkBlue = makeColor 0.1 0.1 0.5 1.0
@@ -249,32 +248,40 @@ buttonEditor :: Button
 buttonEditor = buttonBasic (230) (-180) "EDITOR"
 
 
+-- Define the rendering function
+renderObstaculos obstaculos largo ancho= color blue (pictures (map (renderCell largo ancho) obstaculos))
+renderObstaculosB obstaculos largo ancho = color darkBlue (pictures (map (renderCellB largo ancho) obstaculos))
+renderCeldas largo ancho = color black (pictures (map (renderCell largo ancho) (mapa largo ancho)))
+renderCeldasB largo ancho = color gray (pictures (map (renderCellB largo ancho) (mapa largo ancho)))
+renderCell largo ancho (x,y) = translate (fromIntegral (x-(divCeiling largo 2)) * cellSize) (fromIntegral (y -(divCeiling ancho 2)) * cellSize) (rectangleSolid cellSize cellSize)
+renderCellB largo ancho (x,y) = translate (fromIntegral (x-(divCeiling largo 2)) * cellSize) (fromIntegral (y -(divCeiling ancho 2)) * cellSize) (rectangleWire cellSize cellSize)
+mapa largo ancho = [(a,b)| a <- [0..(largo-1)],b <- [0..(ancho-1)]]
 
 render :: GameState -> Picture
-render GameState {obstaculos=obstaculos, snake = (x,y):xs, food = food, gameOver = False ,score=score} =
-  pictures [renderCeldas,renderCeldasB,renderObstaculos obstaculos,renderObstaculosB obstaculos,renderSnake xs ,renderSnakeB xs, renderFood (fst (unzip food)),renderFoodB (fst (unzip food)), renderFoodVerde (fst (unzip food)), renderHead (x,y) ,renderNumeros food,renderScore score]
+render GameState {obstaculos=obstaculos,largoGrid=largoGrid,anchoGrid=anchoGrid, snake = (x,y):xs, food = food, gameOver = False ,score=score} =
+  pictures [renderCeldas largoGrid anchoGrid,renderCeldasB largoGrid anchoGrid,renderObstaculos obstaculos largoGrid anchoGrid,renderObstaculosB obstaculos largoGrid anchoGrid,renderSnake xs ,renderSnakeB xs, renderFood (fst (unzip food)),renderFoodB (fst (unzip food)), renderFoodVerde (fst (unzip food)), renderHead (x,y) ,renderNumeros food,renderScore score]
   where
-    renderHead (x,y) = color verdeOscuro (renderCell (x,y))
-    renderSnake xs = color green (pictures (map renderCell xs))
-    renderSnakeB xs = color verdeOscuro (pictures (map renderCellB xs))
+    renderHead (x,y) = color verdeOscuro (renderCell largoGrid anchoGrid (x,y))
+    renderSnake xs = color green (pictures (map (renderCell largoGrid anchoGrid) xs))
+    renderSnakeB xs = color verdeOscuro (pictures (map (renderCellB largoGrid anchoGrid) xs))
     renderNumeros food = color green (pictures (map renderCellNumeroFood food))
-    renderFood food = color red (pictures (map renderCell food))
-    renderFoodB food = color darkRed (pictures (map renderCellB food))
+    renderFood food = color red (pictures (map (renderCell largoGrid anchoGrid) food))
+    renderFoodB food = color darkRed (pictures (map (renderCellB largoGrid anchoGrid) food))
     renderFoodVerde food = color verdeOscuro (pictures (map renderCellV food))
     renderScore score = translate (-310) 215 (scale 0.15 0.15 (color darkRed (text ("Score: "++(show score)))))
-    renderCellNumeroFood ((x,y),z) = (translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (scale 0.18 0.18 (text (show z))))
-    renderCellV (x, y) = translate (fromIntegral (x-10) * cellSize) (fromIntegral (y -10) * cellSize) (rectangleSolid (cellSize/3) (cellSize/3))
+    renderCellNumeroFood ((x,y),z) = (translate (fromIntegral (x-(divCeiling largoGrid 2)) * cellSize) (fromIntegral (y -(divCeiling anchoGrid 2)) * cellSize) (scale 0.18 0.18 (text (show z))))
+    renderCellV (x, y) = translate (fromIntegral (x-(divCeiling largoGrid 2)) * cellSize) (fromIntegral (y -(divCeiling anchoGrid 2)) * cellSize) (rectangleSolid (cellSize/3) (cellSize/3))
 render GameState { gameOver = True ,playMode=True, score=score} = pictures
   [translate (-180) 100 (scale 0.5 0.5 (color darkRed (text ("Game Over")))),
   translate (-105) 10 (scale 0.4 0.4 (color darkRed (text ("Score: "++(show score))))),
   drawButton buttonPlay,
   drawButton buttonEditor]
 render GameState {playMode=False, saveMode=True, pathSL=pathSL} = translate (-200) 0 (scale 0.2 0.2 (color darkRed (text ("Path: "++pathSL))))
-render GameState { playMode=False , saveMode=False , loadMode=False ,obstaculos=obstaculos } = 
-  pictures [renderCeldas,renderCeldasB,renderObstaculos obstaculos,renderObstaculosB obstaculos]
+render GameState { playMode=False ,largoGrid=largoGrid,anchoGrid=anchoGrid, saveMode=False , loadMode=False ,obstaculos=obstaculos } = 
+  pictures [renderCeldas largoGrid anchoGrid,renderCeldasB largoGrid anchoGrid,renderObstaculos obstaculos largoGrid anchoGrid,renderObstaculosB obstaculos largoGrid anchoGrid]
   
 -- Define the main function
 main :: IO ()
 main = do
-  play window white 6 (initialState (obstaculosRandom 7))render handleInput update
+  play window white 6 (initialState 5 13 14 (obstaculosRandom 7 13 14)) render handleInput update
   
