@@ -151,7 +151,7 @@ huevosQueCumpleUno mini food matrix = filter (\((x,y),z) -> (matrix Map.! (x,y))
 update :: Float -> GameState -> GameState
 update _ gameState@(GameState { comienzo=comienzo,obstaculos = obstaculos ,snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score, grid=grid, cantHuevos=cantHuevos, largoGrid=largoGrid,anchoGrid=anchoGrid}) =
     if comienzo 
-      then gameState{comienzo = False,snake = (x', y'):  (x,y):xs}
+      then gameState{comienzo = False,snake = (x', y'):  (x,y):xs,teclaPresionada=False}
     else if (x', y') `elem` (x,y):xs || (x', y') `elem` obstaculos || ((largoGrid*anchoGrid)-(length obstaculos)-(length ((x,y):xs))<cantHuevos)
       then gameState { gameOver = True }
     else if (x', y') `elem` fst (unzip food)
