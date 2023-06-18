@@ -4,17 +4,6 @@
 -  Yoan René Ramos Corrales
 - Kevin Majim Ortega Álvarez
 
-## Requerimientos
-- Sistema Operativo: Linux
-<br>
-- Tener instalado entorno de Haskell y entorno de ` cabal` 
-<br>
-- Ejecución del comando  ` cabal build  ` desde la carpeta raíz del proyecto, esto creará el ejecutable del mismo
-<br>
-<br>
-Nótese la ambigüedad en los requerimientos debido a la falta de experiencia en relación con las dependencias necesarias para la ejecución de aplicaciones hechas en Haskell  
-<br>
-## Proyecto
 NOTA: El proyecto dado en su totalidad en Haskell está basado en el proyecto de 1er semestre de 1er Año de Ciencias de la Computación del curso 2019-2020.
 <br><br>
 Sobre un mundo bidimensional de 𝑁 × 𝐾 casillas se han dispuesto un conjunto de obstáculos. Este mundo es
