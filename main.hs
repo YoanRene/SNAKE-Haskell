@@ -1,12 +1,18 @@
+{-# LANGUAGE DeriveGeneric #-}
+{-# LANGUAGE DeriveAnyClass #-}
 import Graphics.Gloss
 import Graphics.Gloss.Interface.Pure.Game
 import System.Random
 import Data.List
+import GHC.Generics
+import System.Directory
 import qualified Data.Map as Map
 import Data.Aeson
 import System.IO.Unsafe
+import System.IO
 import Graphics.Gloss.Data.Color
 import Graphics.Gloss.Data.Picture
+import qualified Data.ByteString.Lazy as B
 
 -- Define the game state
 data GameState = GameState {
@@ -19,16 +25,20 @@ data GameState = GameState {
   direction :: (Int, Int),
   food :: [((Int, Int),Int)],
   gameOver :: Bool,
+  teclaPresionada :: Bool,
   playMode :: Bool,
-  saveMode :: Bool, 
-  loadMode :: Bool, 
   pathSL :: String,
   score :: Int
-}
+} deriving (Generic,Show)
 
+instance ToJSON GameState
+instance ToJSON Cell
+
+instance FromJSON GameState
+instance FromJSON Cell
 
 type Queue a = [a]
-data Cell = Empty | Blocked deriving (Eq, Show)
+data Cell = Empty | Blocked deriving (Eq, Show, Generic)
 
 isObstacle :: [[Cell]] -> (Int, Int) -> Bool
 isObstacle matrix (x, y) = ((matrix !! x) !! y) == Blocked
@@ -69,14 +79,13 @@ initialState cantHuevos largo ancho obstaculos = GameState {
   cantHuevos = cantHuevos,
   largoGrid =largo,
   anchoGrid = ancho,
+  teclaPresionada=False,
   grid = updateMatrix Blocked obstaculos (replicate largo (replicate ancho Empty)),
   snake = randomItems (0,0) 1 obstaculos largo ancho ,
   food = zip (randomItems (0,0) cantHuevos ((snake (initialState cantHuevos largo ancho obstaculos))++obstaculos) largo ancho) (cycle [1..cantHuevos ]),
   direction = (1, 0),
   playMode=True,
-  saveMode=False,
-  loadMode=False,
-  pathSL="<name_file.json>",
+  pathSL="<press any key>",
   score=0
 }
 
@@ -139,15 +148,16 @@ huevosQueCumpleUno mini food matrix = filter (\((x,y),z) -> (matrix Map.! (x,y))
 -- Define the update function
 update :: Float -> GameState -> GameState
 update _ gameState@(GameState { obstaculos = obstaculos ,snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score, grid=grid, cantHuevos=cantHuevos, largoGrid=largoGrid,anchoGrid=anchoGrid}) =
-    if (x', y') `elem` xs || (x', y') `elem` obstaculos || ((largoGrid*anchoGrid)-(length obstaculos)-(length ((x, y):xs))<cantHuevos)
+    if (x', y') `elem` (x,y):xs || (x', y') `elem` obstaculos || ((largoGrid*anchoGrid)-(length obstaculos)-(length ((x,y):xs))<cantHuevos)
         then gameState { gameOver = True }
     else if (x', y') `elem` fst (unzip food)
-        then gameState { snake = (x', y'):  (x,y):xs, food = updateFood food (x', y') cantHuevos largoGrid anchoGrid (((x',y'):(x,y):xs)++obstaculos) ,score=if length food /= 1 then updateScore score (myDic (bfs grid (x',y'))) (filter (\((a,b),z) -> a/=x'||b/=y') food) else score}
+        then gameState { teclaPresionada=False,snake = (x', y'):  (x,y):xs, food = updateFood food (x', y') cantHuevos largoGrid anchoGrid (((x',y'):(x,y):xs)++obstaculos) ,score=if length food /= 1 then updateScore score (myDic (bfs grid (x',y'))) (filter (\((a,b),z) -> a/=x'||b/=y') food) else score}
     else 
-        gameState { snake = (x', y') : init ((x,y):xs) }
+        gameState { teclaPresionada=False,snake = (x', y') : init ((x,y):xs) }
     where
         x' = (x + largoGrid + dx) `mod` largoGrid
-        y' = (y + anchoGrid + dy) `mod` anchoGrid      
+        y' = (y + anchoGrid + dy) `mod` anchoGrid 
+
 update _ gameState = gameState
 
 -- Define the input handling function
@@ -158,37 +168,60 @@ divCeiling :: (Integral a) => a -> a -> a
 divCeiling x y = ceiling ((fromIntegral x) / (fromIntegral y))
 
 handleInput :: Event -> GameState -> GameState
-handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState { playMode=False , saveMode=False, loadMode=False, cantHuevos=cantHuevos,obstaculos=obstaculos,largoGrid=largoGrid,anchoGrid=anchoGrid}) = 
+handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState { playMode=False ,cantHuevos=cantHuevos,obstaculos=obstaculos,largoGrid=largoGrid,anchoGrid=anchoGrid,pathSL=pathSL}) = 
   if isInsideButton buttonPlaym  (x,y) then 
-    (if isValidMapa  obstaculos (updateMatrix Blocked obstaculos (replicate largoGrid (replicate anchoGrid Empty))) && ((largoGrid*anchoGrid)-(length obstaculos)-2>=cantHuevos) then
-    initialState cantHuevos largoGrid anchoGrid obstaculos else gameState) else if isInsideButton buttonSavem (x,y) then gameState{saveMode=True} else if isInsideButton buttonLoadm (x,y) then gameState{loadMode=True} 
+    (if esValido then classic else gameState{pathSL=invalido}) 
+  else if isInsideButton buttonSavem (x,y) then 
+    (if esValido then 
+      let json = encode gameState
+      in unsafePerformIO(B.writeFile pathSL json) `seq` gameState{pathSL=saved}
+      else gameState{pathSL=invalido}
+    )
+  else if isInsideButton buttonLoadm (x,y) then (
+    if unsafePerformIO(doesFileExist pathSL) then do
+    let fileContent = unsafePerformIO(B.readFile pathSL)
+    let eitherGame = eitherDecode fileContent :: Either String GameState
+    case eitherGame of 
+      Right estado -> estado {pathSL=loaded}
+      Left error -> gameState {pathSL=err}
+    else gameState{pathSL=noExiste})
   else if isInsideButton buttonUp1 (x,y) then gameState {anchoGrid=if anchoGrid/=20 then anchoGrid+1 else anchoGrid ,obstaculos=[]} 
   else if isInsideButton buttonUp2 (x,y) then gameState {largoGrid=if largoGrid/=20 then largoGrid+1 else largoGrid, obstaculos=[]}
   else if isInsideButton buttonDown1 (x,y) then gameState {anchoGrid=if anchoGrid/=6 then anchoGrid-1 else anchoGrid, obstaculos=[]}
   else if isInsideButton buttonDown2 (x,y) then gameState {largoGrid=if largoGrid/=6 then largoGrid-1 else largoGrid, obstaculos=[]}
   else if isInsideButton buttonUp3 (x,y) then gameState {cantHuevos=if cantHuevos/=20 then cantHuevos+1 else cantHuevos}
   else if isInsideButton buttonDown3 (x,y) then gameState{cantHuevos=if cantHuevos/=0 then cantHuevos-1 else cantHuevos} 
+ -- else if isInsideButton buttonUp4 (x,y) then gameState{fps=if fps/=12 then fps+1 else fps}
+ -- else if isInsideButton buttonDown4 (x,y) then gameState{fps=if fps/=6 then fps-1 else fps}
   else
     gameState{obstaculos=final}
     where
+      classic=initialState cantHuevos largoGrid anchoGrid obstaculos
+      esValido = isValidMapa  obstaculos (updateMatrix Blocked obstaculos (replicate largoGrid (replicate anchoGrid Empty))) && ((largoGrid*anchoGrid)-(length obstaculos)-2>=cantHuevos) 
       x'=(round (x/cellSize)) + (divCeiling largoGrid 2)
       y'=(round (y/cellSize)) + (divCeiling anchoGrid 2)
       final = if x'<0 || y'<0 || x'> (largoGrid-1) || y'>(anchoGrid-1) then obstaculos else if (x',y') `elem` obstaculos then (delete (x',y') obstaculos) else ((x',y'):obstaculos)
 
-handleInput (EventKey (Char '\b') Down _ _) gameState@(GameState {playMode=False ,saveMode=True, pathSL=pathSL})= gameState{ pathSL = if pathSL=="" then "" else init pathSL } 
-handleInput (EventKey (Char k) Down _ _) gameState@(GameState {playMode=False ,saveMode=True, pathSL=pathSL})=gameState{ pathSL= if pathSL=="<name_file.json>" then [k] else pathSL++[k]}
+handleInput (EventKey (Char '\b') Down _ _) gameState@(GameState {playMode=False , pathSL=pathSL})= gameState{ pathSL = if pathSL=="" || pathSL==press || pathSL==invalido || pathSL==saved || pathSL==loaded || pathSL==err || pathSL== noExiste then "" else init pathSL } 
+handleInput (EventKey (Char k) Down _ _) gameState@(GameState {playMode=False , pathSL=pathSL})=gameState{ pathSL= if pathSL==press || pathSL==invalido||pathSL==saved||pathSL==loaded || pathSL==err || pathSL==noExiste then [k] else pathSL++[k]}
 handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState { gameOver=True, playMode=True,obstaculos=obstaculos ,largoGrid=largoGrid,anchoGrid=anchoGrid,cantHuevos=cantHuevos}) = 
   if isInsideButton buttonPlay (x,y)   then initialState cantHuevos largoGrid anchoGrid obstaculos else if isInsideButton buttonEditor (x,y) then gameState{playMode =False} else gameState
-handleInput (EventKey (Char 'w') Down _ _) gameState@(GameState { direction = dir })
-  | not (isOpposite dir (0, 1)) = gameState { direction = (0, 1) }
-handleInput (EventKey (Char 'a') Down _ _) gameState@(GameState { direction = dir })
-  | not (isOpposite dir (-1, 0)) = gameState { direction = (-1, 0) }
-handleInput (EventKey (Char 's') Down _ _) gameState@(GameState { direction = dir })
-  | not (isOpposite dir (0, -1)) = gameState { direction = (0, -1) }
-handleInput (EventKey (Char 'd') Down _ _) gameState@(GameState { direction = dir })
-  | not (isOpposite dir (1, 0)) = gameState { direction = (1, 0) }
+handleInput (EventKey (Char 'w') Down _ _) gameState@(GameState { direction = dir ,teclaPresionada=False})
+  | not (isOpposite dir (0, 1)) = gameState { direction = (0, 1),teclaPresionada=True }
+handleInput (EventKey (Char 'a') Down _ _) gameState@(GameState { direction = dir ,teclaPresionada=False})
+  | not (isOpposite dir (-1, 0)) = gameState { direction = (-1, 0),teclaPresionada=True }
+handleInput (EventKey (Char 's') Down _ _) gameState@(GameState { direction = dir ,teclaPresionada=False})
+  | not (isOpposite dir (0, -1)) = gameState { direction = (0, -1),teclaPresionada=True }
+handleInput (EventKey (Char 'd') Down _ _) gameState@(GameState { direction = dir ,teclaPresionada=False})
+  | not (isOpposite dir (1, 0)) = gameState { direction = (1, 0) ,teclaPresionada=True}
 handleInput _ gameState = gameState
 
+saved="Saved"
+loaded="Loaded"
+press="<press any key>"
+invalido="Invalid Grid"
+noExiste="Not such file"
+err="ERROR"
 
 -- | Color azul oscuro
 darkBlue :: Color
@@ -199,7 +232,8 @@ darkBlue = makeColor 0.1 0.1 0.5 1.0
 gray :: Color
 gray = makeColor 0.1 0.1 0.1 1.0
 
-
+restartGame :: Int -> GameState -> IO ()
+restartGame newFps gameState = play window white newFps gameState render handleInput update
 
 -- | Crea un color rojo oscuro con una intensidad dada
 darkRed :: Color
@@ -312,23 +346,25 @@ render GameState {obstaculos=obstaculos,largoGrid=largoGrid,anchoGrid=anchoGrid,
     renderCellV (x, y) = translate (fromIntegral (x-(divCeiling largoGrid 2)) * cellSize) (fromIntegral (y -(divCeiling anchoGrid 2)) * cellSize) (rectangleSolid (cellSize/3) (cellSize/3))
 render GameState { gameOver = True ,playMode=True, score=score} = pictures
   [translate (-180) 100 (scale 0.5 0.5 (color darkRed (text ("Game Over")))),
-  translate (-105) 10 (scale 0.4 0.4 (color darkRed (text ("Score: "++(show score))))),
+  translate (-135) 10 (scale 0.4 0.4 (color darkRed (text ("Score:"++(show score))))),
   drawButton buttonPlay,  
   drawButton buttonEditor]
-render GameState {playMode=False, saveMode=True, pathSL=pathSL} = translate (-200) 0 (scale 0.2 0.2 (color darkRed (text ("Path: "++pathSL))))
-render GameState { playMode=False ,largoGrid=largoGrid,anchoGrid=anchoGrid, saveMode=False , loadMode=False ,obstaculos=obstaculos ,cantHuevos=cantHuevos} = 
+render GameState { playMode=False ,largoGrid=largoGrid,anchoGrid=anchoGrid ,obstaculos=obstaculos ,cantHuevos=cantHuevos,pathSL=pathSL} = 
   pictures [renderCeldas largoGrid anchoGrid,renderCeldasB largoGrid anchoGrid,renderObstaculos obstaculos largoGrid anchoGrid,renderObstaculosB obstaculos largoGrid anchoGrid,
   drawButton buttonPlaym,drawButton buttonSavem,drawButton buttonLoadm, drawButton buttonUp1, drawButton buttonDown1, drawButton buttonUp2,drawButton buttonDown2,
-  drawButton buttonUp3,drawButton buttonDown3,drawButton buttonUp4,drawButton buttonDown4,
+  drawButton buttonUp3,drawButton buttonDown3,--drawButton buttonUp4,drawButton buttonDown4,
   translate (-310) 120 (scale 0.15 0.15 (color darkRed (text ("N:"++(show anchoGrid))))),
   translate (-310) 30 (scale 0.15 0.15 (color darkRed (text ("K:"++(show largoGrid))))),
   translate (-310) (-60) (scale 0.15 0.15 (color darkRed (text ("Q:"++(show cantHuevos))))),
-  translate (-310) (-150) (scale 0.15 0.15 (color darkRed (text ("V:6"))))]
+  --translate (-310) (-150) (scale 0.15 0.15 (color darkRed (text ("V:"++(show fps))))),
+  translate (-200) 200 (scale 0.2 0.2 (color darkRed (text ("Name File: "++pathSL))))]
   
 -- Define the main function
 main :: IO ()
 main = do
   let largo=20
   let ancho=20
-  play window white 7 (initialState 5 largo ancho (obstaculosRandom 10 largo ancho)) render handleInput update
+  let fps=10
+  let inicio=(initialState 5 largo ancho (obstaculosRandom 10 largo ancho))
+  play window white fps inicio{gameOver=True,playMode=False} render handleInput update
   
