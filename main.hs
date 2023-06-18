@@ -99,7 +99,7 @@ removeElements xs ys = filter (\x -> not (elem x ys)) xs
 
 -- Define the window size and title
 window :: Display
-window = InWindow "Yoan-Kevin Snake" (640, 480) (10, 10)
+window = InWindow "Yoan-Kevin Snakell" (640, 480) (10, 10)
 
 cantObstaculos :: Int
 cantObstaculos = 7
