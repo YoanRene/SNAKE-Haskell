@@ -20,6 +20,7 @@ data GameState = GameState {
   largoGrid :: Int,
   anchoGrid :: Int,
   grid :: [[Cell]],
+  comienzo :: Bool,
   cantHuevos :: Int,
   snake :: [(Int, Int)],
   direction :: (Int, Int),
@@ -79,6 +80,7 @@ initialState cantHuevos largo ancho obstaculos = GameState {
   cantHuevos = cantHuevos,
   largoGrid =largo,
   anchoGrid = ancho,
+  comienzo = True,
   teclaPresionada=False,
   grid = updateMatrix Blocked obstaculos (replicate largo (replicate ancho Empty)),
   snake = randomItems (0,0) 1 obstaculos largo ancho ,
@@ -147,16 +149,18 @@ huevosQueCumpleUno mini food matrix = filter (\((x,y),z) -> (matrix Map.! (x,y))
 
 -- Define the update function
 update :: Float -> GameState -> GameState
-update _ gameState@(GameState { obstaculos = obstaculos ,snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score, grid=grid, cantHuevos=cantHuevos, largoGrid=largoGrid,anchoGrid=anchoGrid}) =
-    if (x', y') `elem` (x,y):xs || (x', y') `elem` obstaculos || ((largoGrid*anchoGrid)-(length obstaculos)-(length ((x,y):xs))<cantHuevos)
-        then gameState { gameOver = True }
+update _ gameState@(GameState { comienzo=comienzo,obstaculos = obstaculos ,snake = (x, y):xs, direction = (dx, dy), food = food, gameOver = False ,score=score, grid=grid, cantHuevos=cantHuevos, largoGrid=largoGrid,anchoGrid=anchoGrid}) =
+    if comienzo 
+      then gameState{comienzo = False,snake = (x', y'):  (x,y):xs}
+    else if (x', y') `elem` (x,y):xs || (x', y') `elem` obstaculos || ((largoGrid*anchoGrid)-(length obstaculos)-(length ((x,y):xs))<cantHuevos)
+      then gameState { gameOver = True }
     else if (x', y') `elem` fst (unzip food)
-        then gameState { teclaPresionada=False,snake = (x', y'):  (x,y):xs, food = updateFood food (x', y') cantHuevos largoGrid anchoGrid (((x',y'):(x,y):xs)++obstaculos) ,score=if length food /= 1 then updateScore score (myDic (bfs grid (x',y'))) (filter (\((a,b),z) -> a/=x'||b/=y') food) else score}
+      then gameState { teclaPresionada=False,snake = (x', y'):  (x,y):xs, food = updateFood food (x', y') cantHuevos largoGrid anchoGrid (((x',y'):(x,y):xs)++obstaculos) ,score=if length food /= 1 then updateScore score (myDic (bfs grid (x',y'))) (filter (\((a,b),z) -> a/=x'||b/=y') food) else score}
     else 
-        gameState { teclaPresionada=False,snake = (x', y') : init ((x,y):xs) }
+      gameState { teclaPresionada=False,snake = (x', y') : init ((x,y):xs) }
     where
-        x' = (x + largoGrid + dx) `mod` largoGrid
-        y' = (y + anchoGrid + dy) `mod` anchoGrid 
+      x' = (x + largoGrid + dx) `mod` largoGrid
+      y' = (y + anchoGrid + dy) `mod` anchoGrid 
 
 update _ gameState = gameState
 
@@ -364,7 +368,7 @@ main :: IO ()
 main = do
   let largo=20
   let ancho=20
-  let fps=10
+  let fps=7
   let inicio=(initialState 5 largo ancho (obstaculosRandom 10 largo ancho))
   play window white fps inicio{gameOver=True,playMode=False} render handleInput update
   
