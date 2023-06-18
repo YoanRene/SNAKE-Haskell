@@ -33,7 +33,7 @@ data Cell = Empty | Blocked deriving (Eq, Show)
 isObstacle :: [[Cell]] -> (Int, Int) -> Bool
 isObstacle matrix (x, y) = ((matrix !! x) !! y) == Blocked
 
-isValidMapa obstaculos grid = ((length obstaculos) + (length (bfs grid (head (randomItems (0,0) 1 obstaculos (length grid) (length (head grid))))))) == ((length grid) * (length (head grid)))
+isValidMapa obstaculos grid = if (length obstaculos == ((length grid) * (length (head grid)))) then False else ((length obstaculos) + (length (bfs grid (head (randomItems (0,0) 1 obstaculos (length grid) (length (head grid))))))) == ((length grid) * (length (head grid)))
 
 --Ok
 
@@ -159,7 +159,16 @@ divCeiling x y = ceiling ((fromIntegral x) / (fromIntegral y))
 
 handleInput :: Event -> GameState -> GameState
 handleInput (EventKey (MouseButton LeftButton) Down _ (x,y)) gameState@(GameState { playMode=False , saveMode=False, loadMode=False, cantHuevos=cantHuevos,obstaculos=obstaculos,largoGrid=largoGrid,anchoGrid=anchoGrid}) = 
-  if isInsideButton buttonPlaym  (x,y) then initialState cantHuevos largoGrid anchoGrid obstaculos else if isInsideButton buttonSavem (x,y) then gameState{saveMode=True} else if isInsideButton buttonLoadm (x,y) then gameState{loadMode=True} else 
+  if isInsideButton buttonPlaym  (x,y) then 
+    (if isValidMapa  obstaculos (updateMatrix Blocked obstaculos (replicate largoGrid (replicate anchoGrid Empty))) && ((largoGrid*anchoGrid)-(length obstaculos)-2>=cantHuevos) then
+    initialState cantHuevos largoGrid anchoGrid obstaculos else gameState) else if isInsideButton buttonSavem (x,y) then gameState{saveMode=True} else if isInsideButton buttonLoadm (x,y) then gameState{loadMode=True} 
+  else if isInsideButton buttonUp1 (x,y) then gameState {anchoGrid=if anchoGrid/=20 then anchoGrid+1 else anchoGrid ,obstaculos=[]} 
+  else if isInsideButton buttonUp2 (x,y) then gameState {largoGrid=if largoGrid/=20 then largoGrid+1 else largoGrid, obstaculos=[]}
+  else if isInsideButton buttonDown1 (x,y) then gameState {anchoGrid=if anchoGrid/=6 then anchoGrid-1 else anchoGrid, obstaculos=[]}
+  else if isInsideButton buttonDown2 (x,y) then gameState {largoGrid=if largoGrid/=6 then largoGrid-1 else largoGrid, obstaculos=[]}
+  else if isInsideButton buttonUp3 (x,y) then gameState {cantHuevos=if cantHuevos/=20 then cantHuevos+1 else cantHuevos}
+  else if isInsideButton buttonDown3 (x,y) then gameState{cantHuevos=if cantHuevos/=0 then cantHuevos-1 else cantHuevos} 
+  else
     gameState{obstaculos=final}
     where
       x'=(round (x/cellSize)) + (divCeiling largoGrid 2)
@@ -199,7 +208,8 @@ darkRed = makeColor 0.5 0.1 0.1 1.0
 data Button = Button { 
   buttonPos :: (Float, Float),
   buttonSize :: (Float, Float),
-  buttonLabel :: String
+  buttonLabel :: String,
+  scaleB :: Float
 }
 
 isInsideButton :: Button -> (Float,Float)-> Bool
@@ -214,44 +224,67 @@ sizeButton = (150,60)
 sizeButtonm :: (Float,Float)
 sizeButtonm = (105,60)
 
-buttonBasic :: Float -> Float -> String -> Button
-buttonBasic x y s= Button{
+sizeButtonUpDown :: (Float,Float)
+sizeButtonUpDown = (40,30)
+
+buttonBasic :: Float -> Float -> String -> Float -> (Float,Float)-> Button
+buttonBasic x y s scaleB sizeButton = Button{
   buttonPos=(x,y),
   buttonSize=sizeButton,
-  buttonLabel=s
+  buttonLabel=s,
+  scaleB=scaleB
 }
 
-buttonBasicm :: Float -> Float -> String -> Button
-buttonBasicm x y s= Button{
-  buttonPos=(x,y),
-  buttonSize=sizeButtonm,
-  buttonLabel=s
-}
 
 drawButton :: Button -> Picture
-drawButton button@(Button{ buttonLabel=buttonLabel, buttonPos=(x,y),buttonSize=(w,h)}) = pictures
+drawButton button@(Button{ buttonLabel=buttonLabel, buttonPos=(x,y),buttonSize=(w,h),scaleB=scaleB}) = pictures
   [ translate x y $ color white $ rectangleSolid w h
   , translate x y $ color darkRed$ rectangleWire w h
-  , translate (x - w / 2+5) (y - h / 2+10) $ color darkRed $ scale 0.3 0.3 $ text buttonLabel
+  , translate (x - w / 2+5) (y - h / 2+10) $ color darkRed $ scale scaleB scaleB $ text buttonLabel
   ]
   where
     (x, y) = buttonPos button
     (w, h) = buttonSize button
 
+
+buttonUp1 :: Button
+buttonUp1 = buttonBasic (-240) (140) "Up" 0.1 sizeButtonUpDown
+
+buttonUp2 :: Button
+buttonUp2 = buttonBasic (-240) (50) "Up" 0.1 sizeButtonUpDown
+
+buttonUp3 :: Button
+buttonUp3 = buttonBasic (-240) (-40) "Up" 0.1 sizeButtonUpDown
+
+buttonUp4 :: Button
+buttonUp4 = buttonBasic (-240) (-130) "Up" 0.1 sizeButtonUpDown
+
+buttonDown1 :: Button
+buttonDown1 = buttonBasic (-240) (110) "Down" 0.1 sizeButtonUpDown
+
+buttonDown2 :: Button
+buttonDown2 = buttonBasic (-240) (20) "Down" 0.1 sizeButtonUpDown
+
+buttonDown3 :: Button
+buttonDown3 = buttonBasic (-240) (-70) "Down" 0.1 sizeButtonUpDown
+
+buttonDown4 :: Button
+buttonDown4 = buttonBasic (-240) (-160) "Down" 0.1 sizeButtonUpDown
+
 buttonPlay :: Button
-buttonPlay = buttonBasic (-230) (-180) "PLAY"
+buttonPlay = buttonBasic (-230) (-180) "PLAY" 0.3 sizeButton
 
 buttonPlaym :: Button
-buttonPlaym = buttonBasicm (255) (-190) "PLAY"
+buttonPlaym = buttonBasic (255) (-190) "PLAY" 0.3 sizeButtonm
 
 buttonSavem :: Button
-buttonSavem = buttonBasicm (255) (-10) "SAVE"
+buttonSavem = buttonBasic (255) (-10) "SAVE" 0.3 sizeButtonm
 
 buttonLoadm :: Button
-buttonLoadm = buttonBasicm (255) (170) "LOAD"
+buttonLoadm = buttonBasic (255) (170) "LOAD" 0.3 sizeButtonm
 
 buttonEditor :: Button
-buttonEditor = buttonBasic (230) (-180) "EDITOR"
+buttonEditor = buttonBasic (230) (-180) "EDITOR" 0.3 sizeButton
 
 
 -- Define the rendering function
@@ -280,17 +313,22 @@ render GameState {obstaculos=obstaculos,largoGrid=largoGrid,anchoGrid=anchoGrid,
 render GameState { gameOver = True ,playMode=True, score=score} = pictures
   [translate (-180) 100 (scale 0.5 0.5 (color darkRed (text ("Game Over")))),
   translate (-105) 10 (scale 0.4 0.4 (color darkRed (text ("Score: "++(show score))))),
-  drawButton buttonPlay,
+  drawButton buttonPlay,  
   drawButton buttonEditor]
 render GameState {playMode=False, saveMode=True, pathSL=pathSL} = translate (-200) 0 (scale 0.2 0.2 (color darkRed (text ("Path: "++pathSL))))
-render GameState { playMode=False ,largoGrid=largoGrid,anchoGrid=anchoGrid, saveMode=False , loadMode=False ,obstaculos=obstaculos } = 
+render GameState { playMode=False ,largoGrid=largoGrid,anchoGrid=anchoGrid, saveMode=False , loadMode=False ,obstaculos=obstaculos ,cantHuevos=cantHuevos} = 
   pictures [renderCeldas largoGrid anchoGrid,renderCeldasB largoGrid anchoGrid,renderObstaculos obstaculos largoGrid anchoGrid,renderObstaculosB obstaculos largoGrid anchoGrid,
-  drawButton buttonPlaym,drawButton buttonSavem,drawButton buttonLoadm]
+  drawButton buttonPlaym,drawButton buttonSavem,drawButton buttonLoadm, drawButton buttonUp1, drawButton buttonDown1, drawButton buttonUp2,drawButton buttonDown2,
+  drawButton buttonUp3,drawButton buttonDown3,drawButton buttonUp4,drawButton buttonDown4,
+  translate (-310) 120 (scale 0.15 0.15 (color darkRed (text ("N:"++(show anchoGrid))))),
+  translate (-310) 30 (scale 0.15 0.15 (color darkRed (text ("K:"++(show largoGrid))))),
+  translate (-310) (-60) (scale 0.15 0.15 (color darkRed (text ("Q:"++(show cantHuevos))))),
+  translate (-310) (-150) (scale 0.15 0.15 (color darkRed (text ("V:6"))))]
   
 -- Define the main function
 main :: IO ()
 main = do
-  let largo=15
-  let ancho=7
-  play window white 6 (initialState 5 largo ancho (obstaculosRandom 10 largo ancho)) render handleInput update
+  let largo=20
+  let ancho=20
+  play window white 7 (initialState 5 largo ancho (obstaculosRandom 10 largo ancho)) render handleInput update
   
